@@ -60,10 +60,15 @@ def _axes(rationale: dict | None) -> dict[str, AxisScore]:
     for k, v in axes.items():
         if not isinstance(v, dict):
             continue
+        positive = v.get("positive_evidence") or []
+        negative = v.get("negative_evidence") or []
         out[k] = AxisScore(
             score=v.get("score"),
             rationale=v.get("rationale"),
-            citations=v.get("citations") or [],
+            citations=v.get("citations") or [*positive, *negative],
+            positive_evidence=positive,
+            negative_evidence=negative,
+            confidence=v.get("confidence"),
         )
     return out
 

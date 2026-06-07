@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from app.config import get_settings
 from app.db.models import EventType
-from app.llm.client import json_chat
+from app.llm.client import structured_chat
 from app.llm.prompts import CLASSIFIER_SYSTEM
+from app.llm.schemas import EVENT_CLASSIFICATION_SCHEMA
 
 
 # Form-type heuristic: most reliable single signal.
@@ -26,10 +27,11 @@ def classify_with_llm(form_type: str, excerpt: str) -> tuple[EventType, float, s
         f"Form type: {form_type}\n\n"
         f"Filing excerpt (first ~12k chars):\n\n{excerpt[:12_000]}"
     )
-    data = json_chat(
+    data = structured_chat(
         model=settings.openai_model_fast,
         system=CLASSIFIER_SYSTEM,
-        user=user_msg,
+        input_data=user_msg,
+        schema=EVENT_CLASSIFICATION_SCHEMA,
         max_tokens=300,
     )
     try:

@@ -23,6 +23,7 @@ from typing import Any
 from openai import OpenAI
 
 from app.config import get_settings
+from app.llm.schemas import JsonSchema
 
 log = logging.getLogger(__name__)
 
@@ -37,42 +38,43 @@ def get_openai() -> OpenAI:
     return OpenAI(**kwargs)
 
 
-_JSON_PRIMER = "Respond with a single JSON object as specified in the instructions.\n\n"
-
-
-def json_chat(
+def structured_chat(
     *,
     model: str,
     system: str,
-    user: str,
+    input_data: str | list[dict[str, str]],
+    schema: JsonSchema,
     max_tokens: int = 2000,
 ) -> dict[str, Any]:
-    """One-shot system+user call that returns parsed JSON.
-
-    Uses the Responses API with `text.format=json_object` so the model is
-    constrained to emit a valid JSON object. Falls back to a tolerant
-    extractor if the model still produces fenced or preamble output.
-
-    Note: OpenAI's `text.format=json_object` requires the literal word "json"
-    to appear in the *input* (not just the instructions). We prepend a small
-    primer here so callers don't have to think about it.
-    """
+    """One-shot call that returns parsed Structured Outputs JSON."""
     client = get_openai()
     resp = client.responses.create(
         model=model,
         instructions=system,
-        input=_JSON_PRIMER + user,
+        input=input_data,
         max_output_tokens=max_tokens,
-        text={"format": {"type": "json_object"}},
+        text={"format": _schema_format(schema)},
     )
+    refusal = _fallback_extract_refusal(resp)
+    if refusal:
+        raise ValueError(f"Model refused structured response: {refusal}")
     text = (getattr(resp, "output_text", None) or "").strip()
     if not text:
-        # Some SDK versions don't populate output_text aggregator; rummage.
         text = _fallback_extract_text(resp)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         return extract_json(text)
+
+
+def _schema_format(schema: JsonSchema) -> JsonSchema:
+    return {
+        "type": "json_schema",
+        "name": schema["name"],
+        "description": schema.get("description", ""),
+        "schema": schema["schema"],
+        "strict": schema.get("strict", True),
+    }
 
 
 def _fallback_extract_text(resp: Any) -> str:
@@ -90,6 +92,16 @@ def _fallback_extract_text(resp: Any) -> str:
             elif hasattr(t, "value"):  # OutputText.value on some versions
                 parts.append(str(t.value))
     return "".join(parts).strip()
+
+
+def _fallback_extract_refusal(resp: Any) -> str:
+    """Return refusal text from Responses output items, if present."""
+    for item in getattr(resp, "output", []) or []:
+        for c in getattr(item, "content", []) or []:
+            refusal = getattr(c, "refusal", None)
+            if isinstance(refusal, str) and refusal:
+                return refusal
+    return ""
 
 
 def extract_json(text: str) -> dict[str, Any]:

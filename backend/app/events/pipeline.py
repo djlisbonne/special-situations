@@ -19,7 +19,7 @@ from app.db.models import Event, EventStatus, EventType, Filing
 from app.edgar.client import EdgarClient, FilingRef, SPINOFF_FORMS
 from app.edgar.parsers import html_to_text
 from app.events.detector import classify_by_form
-from app.events.spinoff import extract_spinoff_fields, score_spinoff
+from app.events.spinoff import AXIS_WEIGHTS, extract_spinoff_fields, score_spinoff
 
 log = logging.getLogger(__name__)
 
@@ -112,14 +112,16 @@ async def analyze_spinoff_filing(
     event.score_hidden_value = axis_score("hidden_value")
     event.score_leverage_profile = axis_score("leverage_profile")
     event.score_information_asymmetry = axis_score("information_asymmetry")
-    try:
-        event.composite_score = float(scored.get("composite_score"))
-    except (TypeError, ValueError):
-        event.composite_score = None
+    event.composite_score = scored.get("composite_score")
 
     event.score_rationale = {
         "axes": axes,
         "extracted": {k: v for k, v in extracted.items() if not k.startswith("_")},
+        "extraction_evidence": extracted.get("evidence") or {},
+        "raw_values": extracted.get("raw_values") or {},
+        "inferred_fields": extracted.get("inferred_fields") or [],
+        "missing_fields": extracted.get("missing_fields") or [],
+        "composite_weights": AXIS_WEIGHTS,
     }
     event.flags = scored.get("flags") or {}
 

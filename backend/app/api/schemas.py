@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class FilingOut(BaseModel):
@@ -42,7 +42,10 @@ class EventSummary(BaseModel):
 class AxisScore(BaseModel):
     score: float | None = None
     rationale: str | None = None
-    citations: list[str] = []
+    citations: list[str] = Field(default_factory=list)
+    positive_evidence: list[str] = Field(default_factory=list)
+    negative_evidence: list[str] = Field(default_factory=list)
+    confidence: float | None = None
 
 
 class EventDetail(BaseModel):
@@ -81,7 +84,9 @@ class ChatMessageOut(BaseModel):
     id: int
     role: str
     content: str
-    citations: list[Citation] = []
+    citations: list[Citation] = Field(default_factory=list)
+    answered_from_filing: bool | None = None
+    limitations: list[str] = Field(default_factory=list)
     created_at: datetime
 
     class Config:
