@@ -17,15 +17,41 @@ from sqlalchemy.orm import Session
 
 from app.activity import bus
 from app.db.models import Event, EventStatus, EventType, Filing
-from app.edgar.client import EdgarClient, FilingRef, SPINOFF_FORMS
+from app.edgar.client import EDGAR_BASE, EdgarClient, FilingRef, SPINOFF_FORMS
 from app.edgar.parsers import html_to_text
 from app.events.detector import classify_by_form
 from app.events.spinoff import AXIS_WEIGHTS, extract_spinoff_fields, score_spinoff
+
+# Per-doc and total caps for the stitched LLM context. The information statement
+# (ex99-1) on a real 10-12B is typically 1-5 MB of HTML; once stripped to text
+# we want enough to cover business description, capitalization, pro-formas,
+# and risk factors without blowing past the model's effective window.
+_PRIMARY_DOC_MAX_CHARS = 60_000
+_INFO_STATEMENT_MAX_CHARS = 400_000
+_SEPARATION_DOC_MAX_CHARS = 120_000
+_TOTAL_FILING_MAX_CHARS = 600_000
 
 log = logging.getLogger(__name__)
 
 
 _TICKER_RE = re.compile(r"^[A-Z][A-Z.\-]{0,7}$")
+
+
+def _trunc(v: object, n: int) -> str | None:
+    """Coerce to str and clip to a column-friendly length.
+
+    Several Event columns are VARCHAR-bounded (distribution_ratio 64,
+    headline 512, name fields 256). The LLM is allowed to be verbose; we just
+    don't let it overflow a column and roll back the whole transaction.
+    """
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    if len(s) <= n:
+        return s
+    return s[: n - 1].rstrip() + "…"
 
 
 def _clean_ticker(v: object) -> str | None:
@@ -42,6 +68,84 @@ def _clean_ticker(v: object) -> str | None:
     if not s or not _TICKER_RE.match(s):
         return None
     return s
+
+
+def _doc_url(cik: str, accession_no_dashes: str, filename: str) -> str:
+    return (
+        f"{EDGAR_BASE}/Archives/edgar/data/{cik.lstrip('0')}/"
+        f"{accession_no_dashes}/{filename}"
+    )
+
+
+async def fetch_filing_bundle(
+    edgar: EdgarClient,
+    cik: str,
+    accession_no_dashes: str,
+    *,
+    scan_run_id: int | None = None,
+    accession_for_logs: str | None = None,
+) -> str:
+    """Pull the primary form plus the information statement (and the
+    separation/distribution agreement when present) and stitch them into a
+    single text blob with section markers.
+
+    The 10-12B cover form by itself is just a few pages of boilerplate; nearly
+    all the substance the LLM needs — pro-formas, debt sizing, business
+    description, owner alignment — lives in the ex99-1 information statement.
+    """
+    docs = await edgar.list_filing_documents(cik, accession_no_dashes)
+    caps = {
+        "primary": _PRIMARY_DOC_MAX_CHARS,
+        "information_statement": _INFO_STATEMENT_MAX_CHARS,
+        "separation_agreement": _SEPARATION_DOC_MAX_CHARS,
+    }
+    # Pick at most one of each substantive kind. Other exhibits are skipped —
+    # they're mostly material contracts whose details would crowd out the
+    # information statement without changing the thesis.
+    picked: list[dict] = []
+    seen_kinds: set[str] = set()
+    for d in docs:
+        if d["kind"] in caps and d["kind"] not in seen_kinds:
+            picked.append(d)
+            seen_kinds.add(d["kind"])
+
+    sections: list[str] = []
+    total = 0
+    for d in picked:
+        if total >= _TOTAL_FILING_MAX_CHARS:
+            break
+        url = _doc_url(cik, accession_no_dashes, d["name"])
+        try:
+            html = await edgar.fetch_document(url)
+        except Exception as exc:
+            bus().emit(
+                "warn",
+                "edgar.exhibit.fail",
+                f"Exhibit fetch failed ({d['name']}): {exc}",
+                scan_run_id=scan_run_id,
+                accession=accession_for_logs,
+                filename=d["name"],
+            )
+            continue
+        budget = min(caps[d["kind"]], _TOTAL_FILING_MAX_CHARS - total)
+        text = html_to_text(html, max_chars=budget)
+        marker = (
+            f"\n\n===== DOCUMENT: {d['name']} ({d['kind']}, "
+            f"{len(text):,} chars) =====\n\n"
+        )
+        sections.append(marker + text)
+        total += len(text) + len(marker)
+        bus().emit(
+            "info",
+            "edgar.exhibit",
+            f"Pulled {d['kind']} {d['name']} ({len(text):,} chars)",
+            scan_run_id=scan_run_id,
+            accession=accession_for_logs,
+            filename=d["name"],
+            kind=d["kind"],
+            chars=len(text),
+        )
+    return "".join(sections)
 
 
 def _save_filing(db: Session, ref: FilingRef, text: str) -> Filing:
@@ -114,18 +218,20 @@ async def analyze_spinoff_filing(
 
     event.status = EventStatus.ANNOUNCED
     event.parent_cik = filing.cik
-    event.parent_name = extracted.get("parent_name") or filing.company_name
+    event.parent_name = _trunc(
+        extracted.get("parent_name") or filing.company_name, 256
+    )
     event.parent_ticker = _clean_ticker(extracted.get("parent_ticker"))
-    event.spinco_name = extracted.get("spinco_name")
+    event.spinco_name = _trunc(extracted.get("spinco_name"), 256)
     event.spinco_ticker = _clean_ticker(extracted.get("expected_ticker_listing"))
-    event.distribution_ratio = extracted.get("distribution_ratio")
+    event.distribution_ratio = _trunc(extracted.get("distribution_ratio"), 64)
     event.record_date = extracted.get("_record_date_dt")
     event.distribution_date = extracted.get("_distribution_date_dt")
     event.expected_ticker_listing = event.spinco_ticker
 
-    event.headline = scored.get("headline")
-    event.thesis = scored.get("thesis")
-    event.rationale_stated = extracted.get("stated_rationale")
+    event.headline = _trunc(scored.get("headline"), 512)
+    event.thesis = scored.get("thesis")  # Text column, no length limit
+    event.rationale_stated = extracted.get("stated_rationale")  # Text column
 
     event.score_insider_alignment = axis_score("insider_alignment")
     event.score_forced_selling = axis_score("forced_selling")
@@ -212,13 +318,20 @@ async def run_scan(
                 bus().emit(
                     "info",
                     "edgar.fetch",
-                    f"[{i}/{len(refs)}] Fetching {ref.company_name} {ref.form_type}",
+                    f"[{i}/{len(refs)}] Fetching {ref.company_name} {ref.form_type} bundle",
                     scan_run_id=scan_run_id,
                     accession=ref.accession_number,
                     url=ref.primary_doc_url,
                 )
+                accession_no_dashes = ref.accession_number.replace("-", "")
                 try:
-                    html = await edgar.fetch_document(ref.primary_doc_url)
+                    text = await fetch_filing_bundle(
+                        edgar,
+                        ref.cik,
+                        accession_no_dashes,
+                        scan_run_id=scan_run_id,
+                        accession_for_logs=ref.accession_number,
+                    )
                 except Exception as exc:
                     bus().emit(
                         "error",
@@ -228,8 +341,16 @@ async def run_scan(
                         accession=ref.accession_number,
                     )
                     continue
+                if not text.strip():
+                    bus().emit(
+                        "warn",
+                        "edgar.empty",
+                        f"No usable documents found for {ref.company_name}",
+                        scan_run_id=scan_run_id,
+                        accession=ref.accession_number,
+                    )
+                    continue
 
-                text = html_to_text(html)
                 filing = _save_filing(db, ref, text)
                 bus().emit(
                     "info",

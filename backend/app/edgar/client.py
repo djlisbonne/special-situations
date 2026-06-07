@@ -157,22 +157,27 @@ class EdgarClient:
         r = await self._get(url)
         return r.json()
 
-    async def resolve_primary_doc(
+    async def list_filing_documents(
         self, cik: str, accession_no_dashes: str
-    ) -> str | None:
-        """Pick the primary document filename for a filing.
+    ) -> list[dict]:
+        """Classify the filing's HTML documents.
 
-        The EFTS search response sometimes omits `primary_doc`, leaving us with a
-        URL that points at the folder. We resolve it from index.json: prefer the
-        largest .htm that isn't an EDGAR-generated index page or a numbered
-        exhibit (ex10-15, etc.).
+        Returns a list of `{name, size, kind}` for each .htm/.html file, where
+        `kind` is one of:
+          - "primary"               cover form (10-12B, 10-12B/A, etc.)
+          - "information_statement" prospectus-grade narrative (ex99-1*)
+          - "separation_agreement"  large ex2/ex10 typically holding the
+                                    distribution and tax matters agreements
+          - "exhibit"               other numbered exhibits
+        Sorted with the most-substantive docs first so callers can take the
+        head of the list when building LLM context.
         """
         try:
             data = await self.filing_index(cik, accession_no_dashes)
         except Exception:
-            return None
+            return []
         items = (data.get("directory") or {}).get("item") or []
-        candidates: list[tuple[int, str]] = []
+        out: list[dict] = []
         for it in items:
             name = it.get("name") or ""
             lname = name.lower()
@@ -180,20 +185,49 @@ class EdgarClient:
                 continue
             if "-index" in lname or lname.endswith("-headers.html"):
                 continue
-            # Skip exhibits — primary doc usually has the form number in the name
-            # (e.g. ea0292920-1012ba1_adiglobal.htm), exhibits look like
-            # ea029292001ex10-15.htm.
-            if re.search(r"ex\d", lname):
-                continue
             try:
                 size = int(it.get("size") or 0)
             except (TypeError, ValueError):
                 size = 0
-            candidates.append((size, name))
-        if not candidates:
-            return None
-        candidates.sort(reverse=True)
-        return candidates[0][1]
+            if re.search(r"ex99[-_]?1", lname):
+                kind = "information_statement"
+            elif re.search(r"ex\d", lname):
+                # The separation/distribution agreement is usually the largest
+                # ex2 or ex10 exhibit. We only promote sizeable ones; small
+                # numbered exhibits stay generic.
+                if (re.search(r"ex2[-_\.]", lname) or re.search(r"ex10[-_\.]", lname)) and size > 100_000:
+                    kind = "separation_agreement"
+                else:
+                    kind = "exhibit"
+            else:
+                kind = "primary"
+            out.append({"name": name, "size": size, "kind": kind})
+        # Order: primary first, then info statement, then separation
+        # agreement, then other exhibits. Within each kind, biggest first
+        # (size is a decent proxy for "more substance").
+        priority = {
+            "primary": 0,
+            "information_statement": 1,
+            "separation_agreement": 2,
+            "exhibit": 3,
+        }
+        out.sort(key=lambda d: (priority.get(d["kind"], 9), -d["size"]))
+        return out
+
+    async def resolve_primary_doc(
+        self, cik: str, accession_no_dashes: str
+    ) -> str | None:
+        """Pick the primary cover-form filename for a filing."""
+        docs = await self.list_filing_documents(cik, accession_no_dashes)
+        for d in docs:
+            if d["kind"] == "primary":
+                return d["name"]
+        # Fall back to the largest non-exhibit document if classification was
+        # ambiguous (e.g. unusual filing layouts).
+        non_exhibits = [d for d in docs if d["kind"] != "exhibit"]
+        if non_exhibits:
+            return max(non_exhibits, key=lambda d: d["size"])["name"]
+        return None
 
     async def company_submissions(self, cik: str) -> dict:
         cik_padded = cik.lstrip("0").zfill(10)
