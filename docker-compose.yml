@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: greenblatt
+      POSTGRES_PASSWORD: greenblatt
+      POSTGRES_DB: greenblatt
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenblatt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://greenblatt:greenblatt@db:5432/greenblatt
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    # No bind mount on /app — the image's COPY'd code lives on the container's
+    # overlay FS and is read at native speed. Host bind mounts on macOS
+    # (Docker Desktop / VirtioFS) deadlock on high-fan-out reads like Python's
+    # importlib walking a package tree, surfacing as `OSError: [Errno 35]
+    # Resource deadlock avoided`. Use `docker compose watch` for hot reload.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+          ignore:
+            - __pycache__/
+            - "*.pyc"
+            - .pytest_cache/
+            - .ruff_cache/
+            - .mypy_cache/
+        - action: rebuild
+          path: ./backend/pyproject.toml
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      # Browser-side fetches go here (host-published port).
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      # Server-side fetches (Next.js Server Components, Route Handlers) run
+      # inside this container. They reach the backend via the compose network.
+      API_BASE_INTERNAL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    # Same rationale: no bind mount on /app. node_modules and .next stay
+    # baked into the image.
+    command: npm run dev
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+        - action: rebuild
+          path: ./frontend/package.json
+
+volumes:
+  pgdata:
