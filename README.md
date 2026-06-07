@@ -83,7 +83,8 @@ backend/                  FastAPI + SQLAlchemy + APScheduler
                              then computes EV/EBITDA, earnings yield, net debt / EBITDA,
                              FCF yield, ROIC from the typed dataclasses
     llm/
-      client.py           OpenAI SDK wrapper (json_chat helper, JSON-mode)
+      client.py           OpenAI SDK wrapper (Structured Outputs helper)
+      schemas.py          Strict JSON schemas for LLM responses
       prompts.py          Greenblatt-grounded prompts
     api/
       events.py           GET /events, GET /events/{id}
@@ -137,9 +138,8 @@ Composite weights: 0.25 / 0.25 / 0.20 / 0.15 / 0.15.
 - The LLM stage uses OpenAI. By default `gpt-4o` for the heavy passes
   (extraction, scoring, chat) and `gpt-4o-mini` for cheap classification
   fallbacks. Override with `OPENAI_MODEL_PRIMARY` / `OPENAI_MODEL_FAST` in
-  your `.env`. All structured calls use OpenAI JSON mode
-  (`response_format={"type": "json_object"}`) so the model output is
-  guaranteed to parse.
+  your `.env`. All structured calls use OpenAI Structured Outputs with strict
+  JSON schemas, so responses are constrained to the expected application shape.
 - Fundamentals come from **Massive (formerly Polygon.io)** via the official
   [`massive` Python SDK](https://github.com/massive-com/client-python). The
   client computes derived ratios (EV/EBITDA, ROIC, net debt / EBITDA, FCF
