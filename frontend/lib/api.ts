@@ -42,6 +42,9 @@ export type AxisScore = {
   score: number | null;
   rationale: string | null;
   citations: string[];
+  positive_evidence: string[];
+  negative_evidence: string[];
+  confidence: number | null;
 };
 
 export type FilingOut = {
@@ -83,6 +86,8 @@ export type ChatMessageOut = {
   role: "user" | "assistant";
   content: string;
   citations: { id: string; quote: string }[];
+  answered_from_filing: boolean | null;
+  limitations: string[];
   created_at: string;
 };
 

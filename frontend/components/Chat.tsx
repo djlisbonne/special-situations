@@ -106,7 +106,22 @@ function MessageBubble({ m }: { m: ChatMessageOut }) {
   return (
     <div className="mr-12">
       <div className="sans text-xs text-muted uppercase tracking-wide mb-1">Assistant</div>
+      {m.answered_from_filing === false && (
+        <div className="sans text-xs text-muted mb-2">
+          Not answered from the filing
+        </div>
+      )}
       <div className="text-sm whitespace-pre-wrap leading-relaxed">{m.content}</div>
+      {m.limitations?.length > 0 && (
+        <div className="mt-3 sans text-xs text-muted border-l-2 border-rule pl-2">
+          <div className="uppercase tracking-wide mb-1">Limitations</div>
+          <ul className="list-disc list-inside space-y-1">
+            {m.limitations.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {m.citations?.length > 0 && (
         <div className="mt-3 space-y-1">
           {m.citations.map((c) => (
