@@ -9,6 +9,7 @@ EDGAR rules:
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -112,6 +113,11 @@ class EdgarClient:
                         continue
                     primary_doc = src.get("primary_doc") or ""
                     accession_no_dashes = accession.replace("-", "")
+                    if not primary_doc:
+                        primary_doc = (
+                            await self.resolve_primary_doc(cik, accession_no_dashes)
+                            or ""
+                        )
                     index_url = (
                         f"{EDGAR_BASE}/cgi-bin/browse-edgar?action=getcompany"
                         f"&CIK={cik}&type={form}&dateb=&owner=include&count=40"
@@ -141,6 +147,53 @@ class EdgarClient:
     async def fetch_document(self, url: str) -> str:
         r = await self._get(url)
         return r.text
+
+    async def filing_index(self, cik: str, accession_no_dashes: str) -> dict:
+        """Return the filing's directory listing (index.json) from Archives."""
+        url = (
+            f"{EDGAR_BASE}/Archives/edgar/data/"
+            f"{cik.lstrip('0')}/{accession_no_dashes}/index.json"
+        )
+        r = await self._get(url)
+        return r.json()
+
+    async def resolve_primary_doc(
+        self, cik: str, accession_no_dashes: str
+    ) -> str | None:
+        """Pick the primary document filename for a filing.
+
+        The EFTS search response sometimes omits `primary_doc`, leaving us with a
+        URL that points at the folder. We resolve it from index.json: prefer the
+        largest .htm that isn't an EDGAR-generated index page or a numbered
+        exhibit (ex10-15, etc.).
+        """
+        try:
+            data = await self.filing_index(cik, accession_no_dashes)
+        except Exception:
+            return None
+        items = (data.get("directory") or {}).get("item") or []
+        candidates: list[tuple[int, str]] = []
+        for it in items:
+            name = it.get("name") or ""
+            lname = name.lower()
+            if not (lname.endswith(".htm") or lname.endswith(".html")):
+                continue
+            if "-index" in lname or lname.endswith("-headers.html"):
+                continue
+            # Skip exhibits — primary doc usually has the form number in the name
+            # (e.g. ea0292920-1012ba1_adiglobal.htm), exhibits look like
+            # ea029292001ex10-15.htm.
+            if re.search(r"ex\d", lname):
+                continue
+            try:
+                size = int(it.get("size") or 0)
+            except (TypeError, ValueError):
+                size = 0
+            candidates.append((size, name))
+        if not candidates:
+            return None
+        candidates.sort(reverse=True)
+        return candidates[0][1]
 
     async def company_submissions(self, cik: str) -> dict:
         cik_padded = cik.lstrip("0").zfill(10)

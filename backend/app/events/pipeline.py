@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -22,6 +23,25 @@ from app.events.detector import classify_by_form
 from app.events.spinoff import AXIS_WEIGHTS, extract_spinoff_fields, score_spinoff
 
 log = logging.getLogger(__name__)
+
+
+_TICKER_RE = re.compile(r"^[A-Z][A-Z.\-]{0,7}$")
+
+
+def _clean_ticker(v: object) -> str | None:
+    """Coerce LLM output to a real ticker or None.
+
+    The extractor sometimes returns the exchange name ("New York Stock
+    Exchange") or a phrase in this field. Tickers are short uppercase tokens;
+    anything else gets dropped so we don't trip the column length limit or
+    poison the UI.
+    """
+    if not isinstance(v, str):
+        return None
+    s = v.strip().upper()
+    if not s or not _TICKER_RE.match(s):
+        return None
+    return s
 
 
 def _save_filing(db: Session, ref: FilingRef, text: str) -> Filing:
@@ -95,13 +115,13 @@ async def analyze_spinoff_filing(
     event.status = EventStatus.ANNOUNCED
     event.parent_cik = filing.cik
     event.parent_name = extracted.get("parent_name") or filing.company_name
-    event.parent_ticker = extracted.get("parent_ticker")
+    event.parent_ticker = _clean_ticker(extracted.get("parent_ticker"))
     event.spinco_name = extracted.get("spinco_name")
-    event.spinco_ticker = extracted.get("expected_ticker_listing")
+    event.spinco_ticker = _clean_ticker(extracted.get("expected_ticker_listing"))
     event.distribution_ratio = extracted.get("distribution_ratio")
     event.record_date = extracted.get("_record_date_dt")
     event.distribution_date = extracted.get("_distribution_date_dt")
-    event.expected_ticker_listing = extracted.get("expected_ticker_listing")
+    event.expected_ticker_listing = event.spinco_ticker
 
     event.headline = scored.get("headline")
     event.thesis = scored.get("thesis")
