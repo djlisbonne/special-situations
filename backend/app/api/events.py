@@ -148,12 +148,12 @@ _CONTENT_TYPES = {
 }
 
 
-@router.get("/{event_id}/document")
-async def get_event_document(event_id: int, db: Session = Depends(get_db)):
-    """Stream the filing's primary document so the frontend can iframe it.
+@router.get("/{event_id}/documents")
+async def list_event_documents(event_id: int, db: Session = Depends(get_db)):
+    """List the .htm/.html documents in the underlying filing, classified.
 
-    EDGAR doesn't set CORS for our origin, so a same-origin proxy is the
-    cleanest path. We also rewrite the stored URL if we had to repair it.
+    The FilingViewer uses this to render a picker that jumps between the cover
+    form, the information statement, and the separation agreement.
     """
     e = (
         db.query(Event)
@@ -163,10 +163,49 @@ async def get_event_document(event_id: int, db: Session = Depends(get_db)):
     )
     if not e:
         raise HTTPException(404, "event not found")
-    url = await _resolve_filing_url(e.filing)
-    if url != e.filing.primary_doc_url:
-        e.filing.primary_doc_url = url
-        db.commit()
+    accession_nd = _accession_no_dashes(e.filing.accession_number)
+    async with EdgarClient() as edgar:
+        docs = await edgar.list_filing_documents(e.filing.cik, accession_nd)
+    return {"documents": docs}
+
+
+@router.get("/{event_id}/document")
+async def get_event_document(
+    event_id: int,
+    db: Session = Depends(get_db),
+    file: str | None = Query(None),
+):
+    """Stream a document from the filing so the frontend can iframe it.
+
+    Defaults to the primary cover form. Pass `?file=<filename>` (from the
+    /documents listing) to switch to the information statement or another
+    exhibit. EDGAR doesn't set CORS for our origin, so a same-origin proxy
+    is the cleanest path.
+    """
+    e = (
+        db.query(Event)
+        .options(joinedload(Event.filing))
+        .filter(Event.id == event_id)
+        .one_or_none()
+    )
+    if not e:
+        raise HTTPException(404, "event not found")
+
+    if file:
+        # Lock the picker to files that actually belong to this filing —
+        # don't let the parameter wander off to arbitrary EDGAR paths.
+        if "/" in file or ".." in file:
+            raise HTTPException(400, "invalid file name")
+        accession_nd = _accession_no_dashes(e.filing.accession_number)
+        url = (
+            f"{EDGAR_BASE}/Archives/edgar/data/{e.filing.cik.lstrip('0')}/"
+            f"{accession_nd}/{file}"
+        )
+    else:
+        url = await _resolve_filing_url(e.filing)
+        if url != e.filing.primary_doc_url:
+            e.filing.primary_doc_url = url
+            db.commit()
 
     async with EdgarClient() as edgar:
         r = await edgar._get(url)
@@ -199,13 +238,13 @@ async def get_event_document(event_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{event_id}/reanalyze", response_model=EventDetail)
 async def reanalyze_event(event_id: int, db: Session = Depends(get_db)):
-    """Re-fetch the primary doc (repairing the URL if needed) and re-run the LLM.
+    """Re-fetch the filing bundle and re-run the LLM.
 
-    Useful after the EDGAR client gained the index.json fallback: an event whose
-    `raw_text` was just a directory listing can be rescued without a full scan.
+    Uses the same primary + information-statement + separation-agreement
+    bundle the scan pipeline assembles, so an event analyzed before the
+    multi-doc context landed can be rescued in place without a full scan.
     """
-    from app.edgar.parsers import html_to_text
-    from app.events.pipeline import analyze_spinoff_filing
+    from app.events.pipeline import analyze_spinoff_filing, fetch_filing_bundle
 
     e = (
         db.query(Event)
@@ -215,11 +254,25 @@ async def reanalyze_event(event_id: int, db: Session = Depends(get_db)):
     )
     if not e:
         raise HTTPException(404, "event not found")
-    url = await _resolve_filing_url(e.filing)
+    accession_nd = _accession_no_dashes(e.filing.accession_number)
     async with EdgarClient() as edgar:
-        html = await edgar.fetch_document(url)
-    e.filing.primary_doc_url = url
-    e.filing.raw_text = html_to_text(html)
+        # Refresh the stored primary URL while we're here, in case it was
+        # pointing at the folder.
+        primary = await edgar.resolve_primary_doc(e.filing.cik, accession_nd)
+        if primary:
+            e.filing.primary_doc_url = (
+                f"{EDGAR_BASE}/Archives/edgar/data/{e.filing.cik.lstrip('0')}/"
+                f"{accession_nd}/{primary}"
+            )
+        text = await fetch_filing_bundle(
+            edgar,
+            e.filing.cik,
+            accession_nd,
+            accession_for_logs=e.filing.accession_number,
+        )
+    if not text.strip():
+        raise HTTPException(502, "no usable filing documents found on EDGAR")
+    e.filing.raw_text = text
     db.commit()
     await analyze_spinoff_filing(db, e.filing)
     return get_event(event_id, db)

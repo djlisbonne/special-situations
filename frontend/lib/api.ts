@@ -157,6 +157,15 @@ export type ActivityEventOut = {
 export const recentActivity = (limit = 100) =>
   fetchJSON<ActivityEventOut[]>(`/activity/recent?limit=${limit}`);
 
+export type FilingDocument = {
+  name: string;
+  size: number;
+  kind: "primary" | "information_statement" | "separation_agreement" | "exhibit";
+};
+
+export const listEventDocuments = (id: number) =>
+  fetchJSON<{ documents: FilingDocument[] }>(`/events/${id}/documents`);
+
 export const listChat = (id: number) =>
   fetchJSON<ChatMessageOut[]>(`/events/${id}/chat`);
 
