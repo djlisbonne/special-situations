@@ -3,6 +3,7 @@ import { getEvent } from "@/lib/api";
 import { AxisCard } from "@/components/AxisCard";
 import { ScoreBadge } from "@/components/ScoreBar";
 import { Chat } from "@/components/Chat";
+import { FilingViewer } from "@/components/FilingViewer";
 
 export const dynamic = "force-dynamic";
 
@@ -32,89 +33,91 @@ export default async function EventPage({ params }: { params: { id: string } }) 
   const event = await getEvent(Number(params.id));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2 space-y-8">
-        <div>
-          <div className="flex items-center gap-2 sans text-xs uppercase tracking-wide text-muted mb-2">
-            <span>{event.event_type}</span>
-            <span>•</span>
-            <span>{event.status}</span>
-            <span className="ml-auto">
-              <ScoreBadge value={event.composite_score} />
-            </span>
+    <FilingViewer eventId={event.id} primaryDocUrl={event.filing.primary_doc_url}>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="xl:col-span-2 space-y-8">
+          <div>
+            <div className="flex items-center gap-2 sans text-xs uppercase tracking-wide text-muted mb-2">
+              <span>{event.event_type}</span>
+              <span>•</span>
+              <span>{event.status}</span>
+              <span className="ml-auto">
+                <ScoreBadge value={event.composite_score} />
+              </span>
+            </div>
+            <h1 className="text-3xl leading-tight">{event.headline ?? "Untitled event"}</h1>
+            <div className="mt-2 sans text-sm text-muted">
+              <strong className="text-ink">{event.parent_name ?? "—"}</strong>
+              {event.parent_ticker ? ` (${event.parent_ticker})` : ""}
+              {" → "}
+              <strong className="text-ink">{event.spinco_name ?? "—"}</strong>
+              {event.spinco_ticker ? ` (${event.spinco_ticker})` : ""}
+            </div>
           </div>
-          <h1 className="text-3xl leading-tight">{event.headline ?? "Untitled event"}</h1>
-          <div className="mt-2 sans text-sm text-muted">
-            <strong className="text-ink">{event.parent_name ?? "—"}</strong>
-            {event.parent_ticker ? ` (${event.parent_ticker})` : ""}
-            {" → "}
-            <strong className="text-ink">{event.spinco_name ?? "—"}</strong>
-            {event.spinco_ticker ? ` (${event.spinco_ticker})` : ""}
-          </div>
-        </div>
 
-        <section>
-          <h2 className="text-lg mb-2">Thesis</h2>
-          <p className="leading-relaxed">{event.thesis ?? "—"}</p>
-        </section>
-
-        {event.rationale_stated && (
           <section>
-            <h2 className="text-lg mb-2">Stated rationale (from the filing)</h2>
-            <p className="leading-relaxed text-muted italic">“{event.rationale_stated}”</p>
+            <h2 className="text-lg mb-2">Thesis</h2>
+            <p className="leading-relaxed">{event.thesis ?? "—"}</p>
           </section>
-        )}
 
-        <section>
-          <h2 className="text-lg mb-3">Greenblatt scoring</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {Object.entries(event.scores).map(([k, v]) => (
-              <AxisCard key={k} name={k} axis={v} />
-            ))}
-          </div>
-        </section>
+          {event.rationale_stated && (
+            <section>
+              <h2 className="text-lg mb-2">Stated rationale (from the filing)</h2>
+              <p className="leading-relaxed text-muted italic">“{event.rationale_stated}”</p>
+            </section>
+          )}
 
-        {(event.parent_snapshot || event.spinco_snapshot) && (
           <section>
-            <h2 className="text-lg mb-3">Market snapshot</h2>
+            <h2 className="text-lg mb-3">Greenblatt scoring</h2>
             <div className="grid sm:grid-cols-2 gap-3">
-              {event.parent_snapshot && (
-                <Snapshot label="Parent" data={event.parent_snapshot} />
-              )}
-              {event.spinco_snapshot && (
-                <Snapshot label="SpinCo" data={event.spinco_snapshot} />
-              )}
+              {Object.entries(event.scores).map(([k, v]) => (
+                <AxisCard key={k} name={k} axis={v} />
+              ))}
             </div>
           </section>
-        )}
 
-        <section className="text-sm sans text-muted">
-          <h2 className="text-lg text-ink mb-2 font-serif">Filing</h2>
-          <div>Form: {event.filing.form_type}</div>
-          <div>Accession: <span className="mono">{event.filing.accession_number}</span></div>
-          <div>Filed: {fmtDate(event.filing.filed_at)}</div>
-          <div className="mt-2 flex gap-4">
-            <a className="underline text-ink" href={event.filing.primary_doc_url} target="_blank" rel="noreferrer">
-              Primary document ↗
-            </a>
-            <a className="underline text-ink" href={event.filing.index_url} target="_blank" rel="noreferrer">
-              EDGAR index ↗
-            </a>
-          </div>
-        </section>
+          {(event.parent_snapshot || event.spinco_snapshot) && (
+            <section>
+              <h2 className="text-lg mb-3">Market snapshot</h2>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {event.parent_snapshot && (
+                  <Snapshot label="Parent" data={event.parent_snapshot} />
+                )}
+                {event.spinco_snapshot && (
+                  <Snapshot label="SpinCo" data={event.spinco_snapshot} />
+                )}
+              </div>
+            </section>
+          )}
 
-        <section className="sans text-sm">
-          <Link href="/" className="text-muted underline">← Back to dashboard</Link>
-        </section>
-      </div>
+          <section className="text-sm sans text-muted">
+            <h2 className="text-lg text-ink mb-2 font-serif">Filing</h2>
+            <div>Form: {event.filing.form_type}</div>
+            <div>Accession: <span className="mono">{event.filing.accession_number}</span></div>
+            <div>Filed: {fmtDate(event.filing.filed_at)}</div>
+            <div className="mt-2 flex gap-4">
+              <a className="underline text-ink" href={event.filing.primary_doc_url} target="_blank" rel="noreferrer">
+                Primary document ↗
+              </a>
+              <a className="underline text-ink" href={event.filing.index_url} target="_blank" rel="noreferrer">
+                EDGAR index ↗
+              </a>
+            </div>
+          </section>
 
-      <aside className="lg:col-span-1">
-        <div className="lg:sticky lg:top-6 space-y-4">
-          <KeyDates event={event} />
-          <Chat eventId={event.id} />
+          <section className="sans text-sm">
+            <Link href="/" className="text-muted underline">← Back to dashboard</Link>
+          </section>
         </div>
-      </aside>
-    </div>
+
+        <aside className="xl:col-span-1">
+          <div className="xl:sticky xl:top-6 space-y-4">
+            <KeyDates event={event} />
+            <Chat eventId={event.id} />
+          </div>
+        </aside>
+      </div>
+    </FilingViewer>
   );
 }
 
