@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ActivityPanel } from "@/components/ActivityPanel";
+import { ConditionalActivity } from "@/components/ConditionalActivity";
 
 export const metadata: Metadata = {
   title: "Greenblatt",
@@ -31,9 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <div className="max-w-[1400px] mx-auto px-6 py-8 flex gap-8">
           <main className="flex-1 min-w-0">{children}</main>
-          <aside className="hidden lg:block w-72 shrink-0 border-l border-rule pl-6 sticky top-8 self-start h-[calc(100vh-6rem)]">
-            <ActivityPanel />
-          </aside>
+          <ConditionalActivity />
         </div>
       </body>
     </html>

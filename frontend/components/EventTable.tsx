@@ -38,14 +38,19 @@ export function EventTable({ events }: { events: EventSummary[] }) {
               {e.event_type}
             </td>
             <td className="py-3 pr-3 align-top">
-              <div className="text-sm">
-                {e.parent_name ?? "—"}
-                {e.parent_ticker ? <span className="mono text-muted"> ({e.parent_ticker})</span> : null}
-              </div>
-              <div className="text-sm text-muted">
-                → {e.spinco_name ?? "—"}
-                {e.spinco_ticker ? <span className="mono"> ({e.spinco_ticker})</span> : null}
-              </div>
+              <Link
+                href={`/events/${e.id}`}
+                className="block group underline decoration-rule hover:decoration-ink"
+              >
+                <div className="text-sm">
+                  {e.parent_name ?? "—"}
+                  {e.parent_ticker ? <span className="mono text-muted"> ({e.parent_ticker})</span> : null}
+                </div>
+                <div className="text-sm text-muted">
+                  → {e.spinco_name ?? "—"}
+                  {e.spinco_ticker ? <span className="mono"> ({e.spinco_ticker})</span> : null}
+                </div>
+              </Link>
             </td>
             <td className="py-3 pr-3 align-top max-w-sm">
               <Link href={`/events/${e.id}`} className="underline decoration-rule hover:decoration-ink">
