@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.activity import bus
-from app.api import activity, chat, events, scan
+from app.api import activity, chat, events, performance, scan
 from app.db.models import init_db
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 
@@ -32,6 +32,7 @@ app.include_router(events.router)
 app.include_router(scan.router)
 app.include_router(chat.router)
 app.include_router(activity.router)
+app.include_router(performance.router)
 
 
 @app.get("/health")

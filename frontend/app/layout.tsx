@@ -20,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav className="sans text-sm space-x-6 text-muted">
               <Link href="/" className="hover:text-ink">Dashboard</Link>
+              <Link href="/track-record" className="hover:text-ink">Track record</Link>
               <Link href="/scan" className="hover:text-ink">Scan</Link>
               <a
                 href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=10-12B&dateb=&owner=include&count=40"

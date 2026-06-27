@@ -174,3 +174,140 @@ export const sendChat = (id: number, question: string) =>
     `/events/${id}/chat`,
     { method: "POST", body: JSON.stringify({ question }) }
   );
+
+// --- Outcome tracking -------------------------------------------------------
+
+export type PerfPoint = { date: string; close: number };
+
+export type PerfWindow = {
+  label: string;
+  from: string;
+  to: string;
+  return: number | null;
+  market_return: number | null;
+  sector_return: number | null;
+  market_alpha: number | null;
+  sector_alpha: number | null;
+};
+
+export type PerfLeg = {
+  ticker: string;
+  name: string | null;
+  trading: boolean;
+  first_close: number | null;
+  first_date: string | null;
+  last_close: number | null;
+  last_date: string | null;
+  series: PerfPoint[];
+  windows: Record<string, PerfWindow>;
+};
+
+export type PerfHeadline = {
+  subject: string;
+  subject_role: "parent" | "spinco" | null;
+  window: string;
+  return: number | null;
+  market_alpha: number | null;
+  sector_alpha: number | null;
+};
+
+export type Washout = {
+  applicable: boolean;
+  first_close: number;
+  first_date: string;
+  trough_close: number;
+  trough_date: string;
+  trough_return: number;
+  latest_close: number;
+  recovery_from_trough: number | null;
+  window_days: number;
+  still_below_first: boolean;
+};
+
+export type PerfReport = {
+  event_id: number;
+  as_of: string;
+  phase: "pre_distribution" | "seasoning" | "seasoned" | "no_data";
+  phase_label: string;
+  days_since_distribution: number | null;
+  anchors: { filed: string | null; record: string | null; distribution: string | null };
+  benchmarks: {
+    market: { ticker: string; label: string };
+    sector: { ticker: string; label: string };
+  };
+  benchmark_series: Record<string, PerfPoint[]>;
+  legs: { parent: PerfLeg | null; spinco: PerfLeg | null };
+  washout: Washout | null;
+  headline: PerfHeadline | null;
+  notes: string[];
+  has_data: boolean;
+};
+
+export type AxisOutcome = {
+  status: "confirmed" | "contradicted" | "not_yet_testable";
+  note: string;
+};
+
+export type Corroboration = {
+  verdict: "validated" | "partially_validated" | "invalidated" | "too_early";
+  confidence: number;
+  summary: string;
+  drivers: string[];
+  axis_assessment: Record<string, AxisOutcome>;
+  what_to_watch: string[];
+};
+
+export type PerformanceResponse = {
+  event_id: number;
+  computed_at: string | null;
+  report: PerfReport | null;
+  corroboration: Corroboration | null;
+};
+
+export const getPerformance = (id: number, refresh = false) =>
+  fetchJSON<PerformanceResponse>(
+    `/events/${id}/performance${refresh ? "?refresh=true" : ""}`
+  );
+
+export const refreshPerformance = (id: number) =>
+  fetchJSON<PerformanceResponse>(`/events/${id}/performance/refresh`, {
+    method: "POST",
+  });
+
+export type TrackRecordRow = {
+  event_id: number;
+  parent_name: string | null;
+  parent_ticker: string | null;
+  spinco_name: string | null;
+  spinco_ticker: string | null;
+  composite_score: number | null;
+  phase: string | null;
+  phase_label: string | null;
+  as_of: string | null;
+  headline: PerfHeadline | null;
+  verdict: string | null;
+  computed_at: string | null;
+};
+
+export type Calibration = {
+  n: number;
+  avg_market_alpha?: number;
+  positive_alpha_rate?: number;
+  bottom_half_avg_alpha?: number;
+  top_half_avg_alpha?: number;
+  spread?: number;
+};
+
+export type TrackRecord = {
+  items: TrackRecordRow[];
+  calibration: Calibration;
+  count: number;
+};
+
+export const getTrackRecord = () => fetchJSON<TrackRecord>(`/performance/track-record`);
+
+export const refreshAllPerformance = (runLlm = true) =>
+  fetchJSON<{ events_processed: number; events_with_price_data: number }>(
+    `/performance/refresh-all?run_llm=${runLlm}`,
+    { method: "POST" }
+  );

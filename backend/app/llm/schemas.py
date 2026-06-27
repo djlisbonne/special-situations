@@ -225,6 +225,50 @@ SPINOFF_SCORE_SCHEMA: JsonSchema = {
     ),
 }
 
+_AXIS_OUTCOME = _object(
+    {
+        "status": {
+            "type": "string",
+            "enum": ["confirmed", "contradicted", "not_yet_testable"],
+            "description": "Whether realized price action so far supports, refutes, "
+            "or cannot yet test this axis of the original thesis.",
+        },
+        "note": _string("One sentence tying the price action to this axis."),
+    }
+)
+
+THESIS_CORROBORATION_SCHEMA: JsonSchema = {
+    "name": "ThesisCorroboration",
+    "description": (
+        "Judges whether a spin-off thesis played out against realized price "
+        "action. Grounded ONLY in the supplied scores, thesis, and price "
+        "statistics — never invent prices or news."
+    ),
+    "strict": True,
+    "schema": _object(
+        {
+            "verdict": {
+                "type": "string",
+                "enum": ["validated", "partially_validated", "invalidated", "too_early"],
+                "description": "Overall judgement of the thesis vs. what the market did.",
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "summary": _string(
+                "Three to five sentences: what was predicted, what happened, and the gap."
+            ),
+            "drivers": _string_array(
+                "The forces that actually moved the price (anticipation re-rating, "
+                "sector beta, forced-selling washout, fundamentals, multiple "
+                "re-rating, macro). Attribute alpha vs. beta explicitly."
+            ),
+            "axis_assessment": _object({axis: _AXIS_OUTCOME for axis in AXES}),
+            "what_to_watch": _string_array(
+                "Forward-looking catalysts or dates a fund should monitor next."
+            ),
+        }
+    ),
+}
+
 CHAT_ANSWER_SCHEMA: JsonSchema = {
     "name": "ChatAnswer",
     "description": "Answers a filing-grounded question with citations and limitations.",

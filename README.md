@@ -17,6 +17,42 @@ V1 focuses on **spin-offs** (Form 10-12B / 10-12B-A). The pipeline:
    page renders the thesis, scoring, citations, and live fundamentals.
 5. **Interrogate.** A per-event chat lets you ask follow-ups grounded only in
    the filing text, with inline citation markers.
+6. **Corroborate.** Once a spin announces or distributes, pull real daily price
+   history and close the loop: how did it actually perform vs. the thesis, and
+   why? See **Outcome tracking** below.
+
+## Outcome tracking & thesis corroboration
+
+A score is a *prediction*. This layer measures what the market actually did and
+asks the LLM whether the thesis explains it — turning the dashboard from a
+screener into a back-tested, self-grading tool.
+
+- **Phase-aware.** A spin-off is a sequence (filed → record → distribution →
+  seasoning), and value shows up in different legs at different times. Before
+  distribution we track the **parent's** anticipation re-rating; after, the
+  **spin-co's** survival of the forced-selling washout. The `phase` drives which
+  leg is the headline.
+- **Alpha, not vanity.** Every return is measured against both the S&P 500 and
+  the relevant **sector ETF** (e.g. aerospace → XAR), so you see whether the
+  *edge* was real or just beta. Positive alpha = the spin-specific edge showed up.
+- **Forced-selling washout.** For trading spin-cos we quantify the first-90-day
+  trough and recovery — Greenblatt's classic entry signal.
+- **LLM post-mortem.** Realized price stats (computed in Python, never invented
+  by the model) are fed back with the original thesis for a structured verdict
+  (`validated` / `partially_validated` / `invalidated` / `too_early`), a
+  per-axis "did it hold up?" read, and a what-to-watch-next list.
+- **Track record.** `/track-record` lines every scored event up against its
+  realized alpha and asks the question that matters to an LP: does a higher
+  composite score actually predict higher alpha? (Honest calibration, including
+  the small-sample / pre-distribution caveat.)
+- **Coverage.** Most filings name the parent but not its ticker; a strict,
+  exact-match name→ticker resolver (SEC `company_tickers.json`) backfills them so
+  the loop can run. It never guesses — a wrong ticker is worse than none.
+
+Endpoints: `GET /events/{id}/performance`, `POST /events/{id}/performance/refresh`,
+`GET /performance/track-record`, `POST /performance/refresh-all`,
+`POST /performance/resolve-tickers`. The factual report and the LLM verdict are
+cached per event in `outcome_snapshots` (12h TTL).
 
 ---
 
@@ -82,6 +118,13 @@ backend/                  FastAPI + SQLAlchemy + APScheduler
                              ticker_details + snapshot_ticker + list_stock_financials,
                              then computes EV/EBITDA, earnings yield, net debt / EBITDA,
                              FCF yield, ROIC from the typed dataclasses
+    fundamentals/prices.py   Cached daily price bars via list_aggs + pure return /
+                             alpha / drawdown helpers (the back-test raw material)
+    fundamentals/tickers.py  Strict name→ticker resolver (SEC company_tickers.json)
+    performance/
+      benchmarks.py       Company name/SIC → sector ETF (else SPY)
+      tracker.py          Event + prices → phase-aware outcome report + washout
+      corroborate.py      LLM post-mortem: thesis vs. realized price action
     llm/
       client.py           OpenAI SDK wrapper (Structured Outputs helper)
       schemas.py          Strict JSON schemas for LLM responses
@@ -90,15 +133,19 @@ backend/                  FastAPI + SQLAlchemy + APScheduler
       events.py           GET /events, GET /events/{id}
       scan.py             POST /scan
       chat.py             POST /events/{id}/chat
+      performance.py      Outcome tracking + track-record + ticker backfill
     scheduler/jobs.py     APScheduler daily job
 
 frontend/                 Next.js 14 (app router) + Tailwind
   app/
     page.tsx              Dashboard (ranked event list)
-    events/[id]/page.tsx  Event detail + Chat panel
+    events/[id]/page.tsx  Event detail + Outcome panel + Chat panel
+    track-record/page.tsx Calibration: score vs. realized alpha across events
     scan/page.tsx         Manual scan trigger
   components/
     EventTable.tsx        Ranked rows
+    PerformancePanel.tsx  Outcome-vs-thesis: headline alpha, chart, washout, verdict
+    PerfChart.tsx         Rebased growth-of-100 multi-line SVG chart
     AxisCard.tsx          Per-axis score with citations
     Chat.tsx              Per-filing Q&A
     ScoreBar.tsx          Score widgets

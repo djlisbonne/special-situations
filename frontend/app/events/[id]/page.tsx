@@ -4,6 +4,7 @@ import { AxisCard } from "@/components/AxisCard";
 import { ScoreBadge } from "@/components/ScoreBar";
 import { Chat } from "@/components/Chat";
 import { FilingViewer } from "@/components/FilingViewer";
+import { PerformancePanel } from "@/components/PerformancePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,9 @@ export default async function EventPage({ params }: { params: { id: string } }) 
             <h2 className="text-lg mb-2">Thesis</h2>
             <p className="leading-relaxed">{event.thesis ?? "—"}</p>
           </section>
+
+          <PerformancePanel eventId={event.id} />
+
 
           {event.rationale_stated && (
             <section>

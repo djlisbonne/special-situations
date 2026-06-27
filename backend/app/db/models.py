@@ -143,6 +143,35 @@ class ChatMessage(Base):
     event: Mapped[Event] = relationship("Event", back_populates="messages")
 
 
+class OutcomeSnapshot(Base):
+    """Cached post-spin performance report + LLM corroboration for one event.
+
+    The factual report is cheap-ish but rate-limited (market API), and the
+    corroboration is an LLM call, so we persist the latest computation and let
+    the API decide when it's stale enough to recompute.
+    """
+
+    __tablename__ = "outcome_snapshots"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_outcome_event"),
+        Index("ix_outcome_computed_at", "computed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    as_of: Mapped[str | None] = mapped_column(String(16))  # YYYY-MM-DD the report covers
+    phase: Mapped[str | None] = mapped_column(String(32))
+    report: Mapped[dict | None] = mapped_column(JSON)  # factual price-action report
+    corroboration: Mapped[dict | None] = mapped_column(JSON)  # LLM verdict
+
+    event: Mapped[Event] = relationship("Event")
+
+
 class ScanRun(Base):
     __tablename__ = "scan_runs"
 
