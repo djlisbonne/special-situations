@@ -109,6 +109,13 @@ async def fetch_filing_bundle(
             picked.append(d)
             seen_kinds.add(d["kind"])
 
+    # Stitch the information statement FIRST. It's the prospectus-grade document
+    # that carries the financials, capitalization, and deal mechanics; the cover
+    # Form 10 is boilerplate. Downstream extraction reads a bounded head-slice of
+    # this blob, so the substance must lead or the financials get sliced off.
+    _order = {"information_statement": 0, "separation_agreement": 1, "primary": 2}
+    picked.sort(key=lambda d: _order.get(d["kind"], 9))
+
     sections: list[str] = []
     total = 0
     for d in picked:

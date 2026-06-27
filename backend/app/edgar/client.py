@@ -25,6 +25,30 @@ EDGAR_DATA = "https://data.sec.gov"
 SPINOFF_FORMS = ("10-12B", "10-12B/A", "10-12G", "10-12G/A")
 COMPLETION_FORMS = ("8-K",)
 
+# Exhibit-99.1 (the information statement) under every naming convention we've
+# seen: "ex99-1", "ex991", "exhibit991", "d123dex991", "tm..._ex99-1". The
+# `(?:hibit)?` lets "ex" or "exhibit" precede the number, and the trailing
+# negative lookahead keeps "ex99-10"/"ex9911" from masquerading as 99.1.
+_INFO_STATEMENT_RE = re.compile(r"ex(?:hibit)?[-_]?99[-_.]?1(?!\d)", re.IGNORECASE)
+# Any numbered exhibit: capture the leading exhibit number so we can tell a
+# distribution/tax-matters agreement (ex2.x / ex10.x) from a certification.
+_EXHIBIT_RE = re.compile(r"ex(?:hibit)?[-_]?(\d{1,2})", re.IGNORECASE)
+
+
+def _classify_doc(lname: str, size: int) -> str:
+    """Classify one filing document by filename + size. See list_filing_documents."""
+    if _INFO_STATEMENT_RE.search(lname):
+        return "information_statement"
+    m = _EXHIBIT_RE.search(lname)
+    if m:
+        num = m.group(1)
+        # The separation/distribution and tax-matters agreements are the large
+        # ex2.x / ex10.x exhibits; small numbered exhibits stay generic.
+        if num in ("2", "10") and size > 100_000:
+            return "separation_agreement"
+        return "exhibit"
+    return "primary"
+
 
 @dataclass
 class FilingRef:
@@ -189,19 +213,19 @@ class EdgarClient:
                 size = int(it.get("size") or 0)
             except (TypeError, ValueError):
                 size = 0
-            if re.search(r"ex99[-_]?1", lname):
-                kind = "information_statement"
-            elif re.search(r"ex\d", lname):
-                # The separation/distribution agreement is usually the largest
-                # ex2 or ex10 exhibit. We only promote sizeable ones; small
-                # numbered exhibits stay generic.
-                if (re.search(r"ex2[-_\.]", lname) or re.search(r"ex10[-_\.]", lname)) and size > 100_000:
-                    kind = "separation_agreement"
-                else:
-                    kind = "exhibit"
-            else:
-                kind = "primary"
+            kind = _classify_doc(lname, size)
             out.append({"name": name, "size": size, "kind": kind})
+
+        # Fallback: if no exhibit-99.1 was matched by name but one document
+        # dwarfs the rest, it is almost certainly the information statement.
+        # Filers name it inconsistently (exhibit991.htm, ex99-1.htm,
+        # d123dex991.htm, or occasionally no recognizable token at all), and a
+        # cover Form 10 is rarely above ~150 KB — so a 300 KB+ HTML doc is the
+        # prospectus-grade narrative we actually need.
+        if out and not any(d["kind"] == "information_statement" for d in out):
+            biggest = max(out, key=lambda d: d["size"])
+            if biggest["size"] > 300_000:
+                biggest["kind"] = "information_statement"
         # Order: primary first, then info statement, then separation
         # agreement, then other exhibits. Within each kind, biggest first
         # (size is a decent proxy for "more substance").
