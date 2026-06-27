@@ -73,7 +73,7 @@ def chat(event_id: int, body: ChatRequest, db: Session = Depends(get_db)):
         system=CHAT_SYSTEM,
         input_data=conversation,
         schema=CHAT_ANSWER_SCHEMA,
-        max_output_tokens=1500,
+        max_tokens=1500,
     )
     answer = data.get("answer", "")
     citations = {
