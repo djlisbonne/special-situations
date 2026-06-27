@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% block title %}{{ event.headline or "Event" }} · Greenblatt{% endblock %}
+{% macro snapshot(label, d) %}
+<div class="card">
+  <div class="label">{{ label }} <span class="mono" style="color:var(--ink)">{{ d.ticker or "" }}</span></div>
+  <dl class="kv" style="margin-top:.4rem;">
+    <dt>Market cap</dt><dd class="mono">{{ d.market_cap|fmt_num }}</dd>
+    <dt>EV / EBITDA</dt><dd class="mono">{{ d.ev_to_ebitda|fmt_ratio }}</dd>
+    <dt>Earnings yield</dt><dd class="mono">{{ d.earnings_yield|fmt_pct }}</dd>
+    <dt>ROIC</dt><dd class="mono">{{ d.roic|fmt_pct }}</dd>
+    <dt>Net debt / EBITDA</dt><dd class="mono">{{ d.net_debt_to_ebitda|fmt_ratio }}</dd>
+    <dt>FCF yield</dt><dd class="mono">{{ d.fcf_yield|fmt_pct }}</dd>
+  </dl>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="cols">
+  <div class="stack">
+    <div>
+      <div class="label" style="display:flex; gap:.5rem; align-items:center;">
+        <span>{{ event.event_type.value }}</span><span>•</span><span>{{ event.status.value }}</span>
+        <span style="margin-left:auto;">{{ m.score_badge(event.composite_score) }}</span>
+      </div>
+      <h1 style="margin-top:.4rem;">{{ event.headline or "Untitled event" }}</h1>
+      <div class="small muted" style="margin-top:.3rem;">
+        <strong style="color:var(--ink)">{{ event.parent_name or "—" }}</strong>{% if event.parent_ticker %} ({{ event.parent_ticker }}){% endif %}
+        → <strong style="color:var(--ink)">{{ event.spinco_name or "—" }}</strong>{% if event.spinco_ticker %} ({{ event.spinco_ticker }}){% endif %}
+      </div>
+    </div>
+
+    <section>
+      <h2>Thesis</h2>
+      <p>{{ event.thesis or "—" }}</p>
+    </section>
+
+    {% include "_performance.html" %}
+
+    {% if event.rationale_stated %}
+    <section>
+      <h2>Stated rationale (from the filing)</h2>
+      <p class="muted" style="font-style:italic;">“{{ event.rationale_stated }}”</p>
+    </section>
+    {% endif %}
+
+    <section>
+      <h2>Greenblatt scoring</h2>
+      <div class="grid-2">
+        {% for a in axes %}
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
+            <div>
+              <div class="small" style="font-weight:600;">{{ a.meta.title }}</div>
+              <div class="tiny muted">{{ a.meta.blurb }}</div>
+              {% if a.confidence is not none %}<div class="tiny muted" style="margin-top:.2rem;">Confidence {{ (a.confidence * 100)|round|int }}%</div>{% endif %}
+            </div>
+            {{ m.score_bar(a.score) }}
+          </div>
+          {% if a.rationale %}<p class="small" style="margin:.5rem 0 0;">{{ a.rationale }}</p>{% endif %}
+          {% if a.positive %}<ul class="evidence">{% for c in a.positive %}<li>“{{ c }}”</li>{% endfor %}</ul>{% endif %}
+          {% if a.negative %}<div class="label" style="margin-top:.5rem;">Negative evidence</div><ul class="evidence neg">{% for c in a.negative %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if parent_snapshot or spinco_snapshot %}
+    <section>
+      <h2>Market snapshot</h2>
+      <div class="grid-2">
+        {% if parent_snapshot %}{{ snapshot("Parent", parent_snapshot) }}{% endif %}
+        {% if spinco_snapshot %}{{ snapshot("SpinCo", spinco_snapshot) }}{% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section>
+      <h2>Filing</h2>
+      <div class="small muted">
+        <div>Form: {{ event.filing.form_type }}</div>
+        <div>Accession: <span class="mono">{{ event.filing.accession_number }}</span></div>
+        <div>Filed: {{ event.filing.filed_at|fmt_date }}</div>
+      </div>
+      <iframe class="filing" src="/api/events/{{ event.id }}/document" title="Filing document" style="margin-top:.6rem;"></iframe>
+      <div class="small" style="margin-top:.4rem;">
+        <a href="{{ event.filing.primary_doc_url }}" target="_blank" rel="noreferrer">Primary document ↗</a>
+        &nbsp;·&nbsp;
+        <a href="{{ event.filing.index_url }}" target="_blank" rel="noreferrer">EDGAR index ↗</a>
+      </div>
+    </section>
+
+    <section class="small"><a href="/" class="muted">← Back to dashboard</a></section>
+  </div>
+
+  <aside>
+    <div class="aside-sticky stack">
+      <div class="card">
+        <div class="label">Key dates</div>
+        <dl class="kv" style="margin-top:.4rem;">
+          <dt>Record date</dt><dd class="mono">{{ event.record_date|fmt_date }}</dd>
+          <dt>Distribution</dt><dd class="mono">{{ event.distribution_date|fmt_date }}</dd>
+          <dt>Ratio</dt><dd class="tiny">{{ event.distribution_ratio or "—" }}</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <div class="label" style="margin-bottom:.4rem;">Ask the filing</div>
+        {% include "_chat.html" %}
+        <form hx-post="/events/{{ event.id }}/chat" hx-target="#chat-log" hx-swap="outerHTML"
+              hx-on::after-request="this.reset()" style="margin-top:.6rem; display:flex; gap:.4rem;">
+          <input type="text" name="question" placeholder="Ask a grounded question…" required>
+          <button class="btn" type="submit"><span class="htmx-indicator">…</span><span>Ask</span></button>
+        </form>
+        <div class="tiny muted" style="margin-top:.3rem;">Answers are grounded only in the filing text.</div>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

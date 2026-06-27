@@ -1,0 +1,14 @@
+{% macro score_badge(value) %}
+  {% if value is none %}<span class="muted small">—</span>
+  {% else %}<span class="badge {{ value|score_tone }}">{{ "%.1f"|format(value) }}</span>{% endif %}
+{% endmacro %}
+
+{% macro score_bar(value) %}
+  {% if value is none %}<span class="muted small">n/a</span>
+  {% else %}
+  <span class="bar">
+    <span class="track"><span class="fill {{ value|score_tone }}" style="width: {{ ([[value,0]|max, 10]|min) * 10 }}%"></span></span>
+    <span class="mono tiny">{{ "%.1f"|format(value) }}</span>
+  </span>
+  {% endif %}
+{% endmacro %}

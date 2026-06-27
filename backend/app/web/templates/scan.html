@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set nav = "scan" %}
+{% block title %}Scan · Greenblatt{% endblock %}
+{% block content %}
+<h1>Scan EDGAR</h1>
+<p class="lead">Pull recent Form 10-12B / 10-12G filings, classify spin-offs, extract the
+deal terms, and score them. Runs nightly automatically; trigger one on demand here.</p>
+
+<form hx-post="/scan" hx-target="#scan-status" hx-swap="outerHTML"
+      style="display:flex; gap:.6rem; align-items:center; margin:1.25rem 0;">
+  <label class="sans small muted">Look back
+    <input type="number" name="lookback_days" value="{{ default_days }}" min="1" max="180" style="width:6rem; display:inline-block; margin-left:.4rem;">
+    days
+  </label>
+  <button class="btn" type="submit"><span class="htmx-indicator">Starting…</span><span>Run scan</span></button>
+</form>
+
+<div id="scan-status"></div>
+
+{% if runs %}
+<section>
+  <h2>Recent runs</h2>
+  <table>
+    <thead><tr><th>#</th><th>Started</th><th>Status</th><th class="right">Seen</th><th class="right">Created</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="mono">{{ r.id }}</td>
+        <td class="small muted">{{ r.started_at|fmt_date }}</td>
+        <td>{% if r.finished_at is none %}<span class="muted">running</span>{% elif r.ok %}<span class="ok">ok</span>{% else %}<span class="bad">failed</span>{% endif %}</td>
+        <td class="right mono">{{ r.filings_seen }}</td>
+        <td class="right mono">{{ r.events_created }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

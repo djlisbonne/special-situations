@@ -1,0 +1,16 @@
+<div id="scan-status"
+     {% if running %}hx-get="/scan/status/{{ run_id }}" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
+  {% if running %}
+    <div class="card"><span class="htmx-indicator">●</span> Scan #{{ run_id }} running… (this refreshes automatically)</div>
+  {% elif run %}
+    <div class="card">
+      {% if run.ok %}
+        <strong class="ok">Scan #{{ run.id }} complete.</strong>
+        {{ run.filings_seen }} filing(s) seen, {{ run.events_created }} event(s) created.
+        <a class="row-link" href="/">View dashboard →</a>
+      {% else %}
+        <strong class="bad">Scan #{{ run.id }} failed.</strong> <span class="muted small">{{ run.error }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

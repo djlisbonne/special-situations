@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Greenblatt{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="site">
+    <div class="bar">
+      <a class="brand" href="/">Greenblatt<span>/ special situations</span></a>
+      <nav class="top">
+        <a href="/" class="{{ 'active' if nav == 'dashboard' }}">Dashboard</a>
+        <a href="/track-record" class="{{ 'active' if nav == 'track' }}">Track record</a>
+        <a href="/scan" class="{{ 'active' if nav == 'scan' }}">Scan</a>
+        <a href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=10-12B&dateb=&owner=include&count=40"
+           target="_blank" rel="noreferrer">EDGAR ↗</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

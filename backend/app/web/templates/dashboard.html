@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "macros.html" as m %}
+{% set nav = "dashboard" %}
+{% block title %}Dashboard · Greenblatt{% endblock %}
+{% block content %}
+<h1>Special-situations dashboard</h1>
+<p class="lead">Corporate events with mispricing potential, ranked by a Greenblatt-style
+composite. Click any row to read the LLM analysis, see how it has performed against
+the thesis, and ask follow-ups grounded in the filing.</p>
+
+<div class="filters">
+  <a href="/" class="{{ 'active' if not active_type and active_min is none }}">All</a>
+  <a href="/?type=spinoff" class="{{ 'active' if active_type == 'spinoff' }}">Spin-offs</a>
+  <span class="muted">|</span>
+  <a href="/?min=7" class="{{ 'active' if active_min == 7 }}">Score ≥ 7</a>
+  <a href="/?min=5" class="{{ 'active' if active_min == 5 }}">Score ≥ 5</a>
+</div>
+
+{% if not events %}
+  <div class="empty">No events yet. Trigger a scan from the <a href="/scan">Scan</a> page.</div>
+{% else %}
+<table>
+  <thead>
+    <tr><th>Score</th><th>Type</th><th>Parent → SpinCo</th><th>Headline</th><th>Distribution</th><th>Filed</th></tr>
+  </thead>
+  <tbody>
+  {% for e in events %}
+    <tr>
+      <td>{{ m.score_badge(e.composite_score) }}</td>
+      <td class="label">{{ e.event_type.value }}</td>
+      <td>
+        <a class="row-link" href="/events/{{ e.id }}">
+          <div class="small">{{ e.parent_name or "—" }}{% if e.parent_ticker %} <span class="mono muted">({{ e.parent_ticker }})</span>{% endif %}</div>
+          <div class="small muted">→ {{ e.spinco_name or "—" }}{% if e.spinco_ticker %} <span class="mono">({{ e.spinco_ticker }})</span>{% endif %}</div>
+        </a>
+      </td>
+      <td><a class="row-link" href="/events/{{ e.id }}">{{ e.headline or "(awaiting analysis)" }}</a></td>
+      <td class="mono tiny muted">{{ e.distribution_date|fmt_date }}</td>
+      <td class="mono tiny muted">{{ e.filing.filed_at|fmt_date }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

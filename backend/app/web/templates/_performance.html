@@ -1,0 +1,76 @@
+<div id="perf-panel">
+  <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:.75rem;">
+    <h2 style="margin:0;">Outcome vs. thesis</h2>
+    {% if perf.report.phase_label %}<span class="label" style="border:1px solid var(--rule); border-radius:3px; padding:.1rem .4rem;">{{ perf.report.phase_label }}</span>{% endif %}
+    <button class="btn" style="margin-left:auto;"
+            hx-post="/events/{{ perf.event.id }}/performance/refresh"
+            hx-target="#perf-panel" hx-swap="outerHTML">
+      <span class="htmx-indicator">Refreshing…</span><span>↻ Refresh</span>
+    </button>
+  </div>
+
+  {% if not perf.has_data %}
+    <p class="muted small">No price history available yet{% if perf.report.notes %} — {{ perf.report.notes[0] }}{% endif %}.</p>
+  {% else %}
+    {% set h = perf.report.headline %}
+    {% if h %}
+    {% set sec = perf.report.benchmarks.sector %}
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="label">{{ h.subject }} — {{ h.window|lower }}</div>
+      <div class="metrics" style="margin-top:.3rem;">
+        <div><span class="metric-big {{ h.return|sign_class }}">{{ h.return|fmt_pct }}</span> <span class="muted small">total return</span></div>
+        <div><span class="stat {{ h.market_alpha|sign_class }}">{{ h.market_alpha|fmt_pp }}</span> <span class="muted small">vs S&amp;P 500</span></div>
+        <div><span class="stat {{ h.sector_alpha|sign_class }}">{{ h.sector_alpha|fmt_pp }}</span> <span class="muted small">vs {{ sec.ticker }}</span></div>
+      </div>
+      <div class="tiny muted" style="margin-top:.4rem;">Sector benchmark: {{ sec.label }}. Positive alpha = the spin-specific edge beat the benchmark.</div>
+    </div>
+    {% endif %}
+
+    <div class="card">{{ perf.chart | safe }}</div>
+
+    {% set w = perf.report.washout %}
+    {% if w and w.applicable %}
+    <div class="card" style="margin-top:1rem;">
+      <div class="label">Forced-selling washout · first {{ w.window_days }} days</div>
+      <div class="metrics small" style="margin-top:.3rem;">
+        <span>Trough <span class="mono {{ w.trough_return|sign_class }}">{{ w.trough_return|fmt_pct }}</span> <span class="muted">({{ w.trough_date }})</span></span>
+        <span>Recovery from trough <span class="mono {{ w.recovery_from_trough|sign_class }}">{{ w.recovery_from_trough|fmt_pct }}</span></span>
+        <span class="muted">{{ "Still below first close" if w.still_below_first else "Recovered above first close" }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if perf.verdict %}
+    {% set v = perf.verdict %}
+    <div class="card" style="margin-top:1rem;">
+      <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem;">
+        <span class="pill {{ v.tone }}">{{ v.label }}</span>
+        <span class="muted small">{{ v.confidence }}% confidence</span>
+        <span class="tiny muted" style="margin-left:auto;">LLM post-mortem</span>
+      </div>
+      <p class="small" style="margin:.2rem 0;">{{ v.summary }}</p>
+      {% if v.drivers %}
+      <div class="label" style="margin-top:.6rem;">What actually moved it</div>
+      <ul class="small" style="margin:.2rem 0; padding-left:1.1rem;">{% for d in v.drivers %}<li>{{ d }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if v.axis_assessment %}
+      <div class="label" style="margin-top:.6rem;">Did each axis hold up?</div>
+      <ul class="small" style="list-style:none; padding:0; margin:.2rem 0;">
+        {% for a in v.axis_assessment %}
+        <li style="display:flex; gap:.5rem; margin-top:.25rem;"><span class="mono {{ a.tone }}">{{ a.mark }}</span><span><strong>{{ a.name }}:</strong> <span class="muted">{{ a.note }}</span></span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if v.what_to_watch %}
+      <div class="label" style="margin-top:.6rem;">What to watch next</div>
+      <ul class="small muted" style="margin:.2rem 0; padding-left:1.1rem;">{% for d in v.what_to_watch %}<li>{{ d }}</li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if perf.report.notes %}
+    <ul class="tiny muted" style="margin-top:.75rem; padding-left:1.1rem;">{% for n in perf.report.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if perf.computed_at %}<div class="tiny muted" style="margin-top:.4rem;">As of {{ perf.report.as_of }} · computed {{ perf.computed_at|fmt_date }}</div>{% endif %}
+  {% endif %}
+</div>

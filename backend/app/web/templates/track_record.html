@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set nav = "track" %}
+{% block title %}Track record · Greenblatt{% endblock %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;">
+  <div>
+    <h1>Track record</h1>
+    <p class="lead">Every spin-off the tool scored, lined up against what the market actually
+    did. The question that matters for a fund: does a higher composite score actually predict
+    higher market-relative alpha?</p>
+  </div>
+  <button class="btn nowrap" hx-post="/track-record/recompute" hx-target="body" hx-swap="outerHTML">
+    <span class="htmx-indicator">Recomputing…</span><span>↻ Recompute all</span>
+  </button>
+</div>
+
+{% if data.count == 0 %}
+  <div class="empty">No outcomes computed yet. Click <strong>Recompute all</strong> to pull
+  price history for every scored event and build the track record.</div>
+{% else %}
+  {% set c = data.calibration %}
+  <div class="card" style="margin:1.25rem 0;">
+    <div class="label">Calibration · {{ c.n }} priced events</div>
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; margin-top:.6rem;">
+      <div><div class="stat {{ c.avg_market_alpha|sign_class }}">{{ c.avg_market_alpha|fmt_pct }}</div><div class="label">Avg market alpha</div></div>
+      <div><div class="stat">{{ (c.positive_alpha_rate * 100)|round|int if c.positive_alpha_rate is not none else "—" }}%</div><div class="label">Positive-alpha rate</div></div>
+      {% if c.spread is defined %}
+      <div><div class="stat {{ c.top_half_avg_alpha|sign_class }}">{{ c.top_half_avg_alpha|fmt_pct }}</div><div class="label">Top-half avg alpha</div></div>
+      <div><div class="stat {{ c.bottom_half_avg_alpha|sign_class }}">{{ c.bottom_half_avg_alpha|fmt_pct }}</div><div class="label">Bottom-half avg alpha</div></div>
+      {% endif %}
+    </div>
+    {% if c.spread is defined %}
+    <p class="small muted" style="margin-top:.6rem;">Score edge:
+      <span class="mono {{ c.spread|sign_class }}">{{ c.spread|fmt_pct }}</span> spread between high- and low-score halves.
+      {% if c.spread > 0 %}Higher scores are tracking with higher alpha — the model is adding signal.
+      {% else %}Higher scores are not yet beating lower ones — treat the score with caution.{% endif %}
+    </p>
+    {% endif %}
+    <p class="tiny muted" style="margin-top:.4rem;">Many events are still pre-distribution, so this
+    is an early read, not a seasoned out-of-sample result. Alpha is the headline window
+    (since distribution once trading, else since filing).</p>
+  </div>
+
+  {% if scatter %}<div class="card" style="margin-bottom:1.25rem;"><div class="label" style="margin-bottom:.3rem;">Composite score vs. realized market alpha</div>{{ scatter | safe }}</div>{% endif %}
+
+  <table>
+    <thead><tr><th>Score</th><th>Parent → SpinCo</th><th>Phase</th><th class="right">Return</th><th class="right">vs S&amp;P</th><th class="right">vs sector</th><th>Verdict</th></tr></thead>
+    <tbody>
+    {% for it in data["items"] %}
+      {% set h = it.headline %}
+      <tr>
+        <td class="mono">{{ "%.1f"|format(it.composite_score) if it.composite_score is not none else "—" }}</td>
+        <td><a class="row-link" href="/events/{{ it.event_id }}"><span class="small">{{ it.parent_ticker or it.parent_name }} → {{ it.spinco_ticker or it.spinco_name or "—" }}</span></a></td>
+        <td class="label">{{ it.phase_label }}</td>
+        <td class="right mono {{ (h.return if h else none)|sign_class }}">{{ (h.return if h else none)|fmt_pct }}</td>
+        <td class="right mono {{ (h.market_alpha if h else none)|sign_class }}">{{ (h.market_alpha if h else none)|fmt_pct }}</td>
+        <td class="right mono {{ (h.sector_alpha if h else none)|sign_class }}">{{ (h.sector_alpha if h else none)|fmt_pct }}</td>
+        <td class="small">
+          {% if it.verdict %}{% set vl = verdict_labels.get(it.verdict) %}<span class="{{ vl[1] }}">{{ vl[0] }}</span>{% else %}—{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

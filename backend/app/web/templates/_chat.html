@@ -1,0 +1,19 @@
+<div id="chat-log" class="chat-log">
+  {% if not messages %}
+    <div class="muted small">Ask a question grounded in the filing text — e.g. "What's the distribution ratio?" or "How levered is the spin-co?"</div>
+  {% endif %}
+  {% for msg in messages %}
+    <div class="msg {{ msg.role }}">
+      <div class="who">{{ msg.role }}</div>
+      <div>{{ msg.content }}</div>
+      {% if msg.citations %}
+      <ul class="evidence" style="margin-top:.4rem;">
+        {% for c in msg.citations %}<li>[{{ c.id }}] “{{ c.quote }}”</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if msg.limitations %}
+      <div class="tiny muted" style="margin-top:.3rem;">Limitations: {{ msg.limitations|join("; ") }}</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>

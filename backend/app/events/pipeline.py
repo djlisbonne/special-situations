@@ -228,9 +228,15 @@ async def analyze_spinoff_filing(
     event.parent_name = _trunc(
         extracted.get("parent_name") or filing.company_name, 256
     )
-    event.parent_ticker = _clean_ticker(extracted.get("parent_ticker"))
+    # Don't let a re-analysis wipe a ticker we already have. The extractor often
+    # can't find the parent's symbol in the filing text, but it may have been
+    # backfilled from SEC's mapping (resolve-tickers) — preserve that rather
+    # than nulling it and breaking outcome tracking.
+    event.parent_ticker = _clean_ticker(extracted.get("parent_ticker")) or event.parent_ticker
     event.spinco_name = _trunc(extracted.get("spinco_name"), 256)
-    event.spinco_ticker = _clean_ticker(extracted.get("expected_ticker_listing"))
+    event.spinco_ticker = (
+        _clean_ticker(extracted.get("expected_ticker_listing")) or event.spinco_ticker
+    )
     event.distribution_ratio = _trunc(extracted.get("distribution_ratio"), 64)
     event.record_date = extracted.get("_record_date_dt")
     event.distribution_date = extracted.get("_distribution_date_dt")

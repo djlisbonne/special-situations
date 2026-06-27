@@ -123,8 +123,13 @@ class PriceHistory:
             log.warning("list_aggs(%s, %s..%s) failed: %s", ticker, start_s, end_s, exc)
             return []
 
-        _CACHE[key] = bars
-        _CACHE_AT[key] = time.time()
+        # Only cache a real result. Caching an empty list would let a single
+        # transient API hiccup (or a rate-limit) poison this window for the
+        # whole TTL — and an empty series reads downstream as "this leg isn't
+        # trading", silently hiding data that exists.
+        if bars:
+            _CACHE[key] = bars
+            _CACHE_AT[key] = time.time()
         return bars
 
 

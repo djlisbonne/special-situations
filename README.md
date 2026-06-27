@@ -21,6 +21,14 @@ V1 focuses on **spin-offs** (Form 10-12B / 10-12B-A). The pipeline:
    history and close the loop: how did it actually perform vs. the thesis, and
    why? See **Outcome tracking** below.
 
+> **Two ways to run the UI.** The FastAPI backend now serves its own
+> server-rendered UI (Jinja2 + HTMX) at `/`, with the JSON API under `/api`. That
+> means the whole app can run as a **single uvicorn process + SQLite** — no Node,
+> no build, no Docker — which is how it's meant to run on a small always-on host
+> like a Raspberry Pi. See [DEPLOY.md](DEPLOY.md). The standalone Next.js app in
+> `frontend/` (richer client-side UX) remains for local dev via the dev compose,
+> but is optional.
+
 ## Outcome tracking & thesis corroboration
 
 A score is a *prediction*. This layer measures what the market actually did and
@@ -134,6 +142,11 @@ backend/                  FastAPI + SQLAlchemy + APScheduler
       scan.py             POST /scan
       chat.py             POST /events/{id}/chat
       performance.py      Outcome tracking + track-record + ticker backfill
+    web/                  Server-rendered UI (no Node/build)
+      views.py            HTML routes + HTMX fragments (chat, refresh, scan)
+      charts.py           Python SVG generators (growth-of-100, scatter)
+      templates/          Jinja2 templates
+      static/             CSS + vendored htmx
     scheduler/jobs.py     APScheduler daily job
 
 frontend/                 Next.js 14 (app router) + Tailwind

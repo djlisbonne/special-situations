@@ -1,62 +1,37 @@
-# Production stack tuned for a low-memory always-on host (e.g. Raspberry Pi 3B,
-# 1 GB RAM, 64-bit Raspberry Pi OS). See DEPLOY.md for the full runbook.
+# Single-service production stack (SQLite), for an always-on low-memory host
+# such as a Raspberry Pi 3B. The app is now one FastAPI process that serves the
+# API, the server-rendered UI, and the nightly scheduler — so this is just the
+# backend. The native (no-Docker) systemd path in DEPLOY.md is even lighter;
+# this is the containerized alternative.
 #
-# Key differences from docker-compose.yml (dev):
-#   - SQLite instead of Postgres: one fewer process, ~150-200 MB RAM saved.
-#   - Production server commands (no --reload; Next.js standalone runtime).
-#   - restart: unless-stopped so it survives reboots and power blips.
-#   - mem_limit guards so no single service can OOM the whole Pi.
-#   - NEXT_PUBLIC_API_BASE must be the Pi's LAN address (baked at build time).
+#   cp .env.example .env   # set OPENAI_API_KEY / POLYGON_API_KEY / SEC_EDGAR_USER_AGENT
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Usage on the Pi (after images are loaded — see DEPLOY.md):
-#   docker compose -f docker-compose.prod.yml up -d
+# Then open http://<host>:8000  (UI at /, JSON API under /api).
 
 services:
-  backend:
-    image: greenblatt-backend:prod
+  app:
+    image: greenblatt:prod
     build:
       context: ./backend
     env_file:
       - .env
     environment:
-      # SQLite file lives on a named volume so it survives container rebuilds.
+      # SQLite file on a named volume; survives container rebuilds.
       DATABASE_URL: sqlite:////data/greenblatt.db
     volumes:
       - appdata:/data
     ports:
       - "8000:8000"
-    # Image default CMD is `uvicorn app.main:app` (no --reload, single worker).
-    # Single worker is deliberate: the APScheduler nightly scan runs in-process,
-    # so multiple workers would fire duplicate EDGAR scans.
+    # Image default CMD is `uvicorn app.main:app` (no --reload, single worker —
+    # the in-process nightly scheduler must not be duplicated across workers).
     restart: unless-stopped
-    # Tuned for a 1 GB Pi shared with another app. Docker allows an equal amount
-    # of swap on top of this (memswap defaults to 2x), so a scan's transient
-    # HTML-parsing spike pages out instead of OOM-killing the container.
-    mem_limit: 320m
+    mem_limit: 480m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 5
-
-  frontend:
-    image: greenblatt-frontend:prod
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-      args:
-        # Where the BROWSER reaches the backend. Must be the Pi's LAN host.
-        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
-    environment:
-      # Where server-side rendering reaches the backend (inside the compose net).
-      API_BASE_INTERNAL: http://backend:8000
-      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    mem_limit: 200m
 
 volumes:
   appdata:
