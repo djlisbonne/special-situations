@@ -79,14 +79,32 @@ class Massive:
             log.warning("snapshot_ticker(%s) failed: %s", ticker, exc)
             return None
 
+    def _financials_lister(self):
+        """Locate the financials lister across `massive` SDK versions.
+
+        Some builds expose `RESTClient.list_stock_financials` directly; others
+        nest the (experimental) endpoint under `.vx`. Resolve whichever exists
+        so a version bump on a fresh install doesn't silently drop fundamentals.
+        """
+        client = self._rest()
+        for owner in (client, getattr(client, "vx", None)):
+            fn = getattr(owner, "list_stock_financials", None)
+            if callable(fn):
+                return fn
+        return None
+
     def latest_financials(self, ticker: str, timeframe: str = "ttm") -> StockFinancial | None:
         if not self._enabled():
             return None
-        try:
-            it = self._rest().list_stock_financials(
-                ticker=ticker, timeframe=timeframe, limit=1, order="desc"
+        fn = self._financials_lister()
+        if fn is None:
+            log.warning(
+                "massive SDK exposes no list_stock_financials (checked client and .vx); "
+                "fundamentals snapshot will be omitted"
             )
-            for row in it:
+            return None
+        try:
+            for row in fn(ticker=ticker, timeframe=timeframe, limit=1, order="desc"):
                 return row
         except Exception as exc:
             log.warning("list_stock_financials(%s, %s) failed: %s", ticker, timeframe, exc)
