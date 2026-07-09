@@ -13,21 +13,19 @@ V1 focuses on **spin-offs** (Form 10-12B / 10-12B-A). The pipeline:
 3. **Score.** OpenAI scores the situation across five Greenblatt axes
    (insider alignment, forced selling, hidden value, leverage profile,
    information asymmetry) with verbatim citations from the filing.
-4. **Browse.** Next.js dashboard ranks events by composite score; the detail
-   page renders the thesis, scoring, citations, and live fundamentals.
+4. **Browse.** Server-rendered dashboard ranks events by composite score; the
+   detail page renders the thesis, scoring, citations, and live fundamentals.
 5. **Interrogate.** A per-event chat lets you ask follow-ups grounded only in
    the filing text, with inline citation markers.
 6. **Corroborate.** Once a spin announces or distributes, pull real daily price
    history and close the loop: how did it actually perform vs. the thesis, and
    why? See **Outcome tracking** below.
 
-> **Two ways to run the UI.** The FastAPI backend now serves its own
-> server-rendered UI (Jinja2 + HTMX) at `/`, with the JSON API under `/api`. That
-> means the whole app can run as a **single uvicorn process + SQLite** — no Node,
-> no build, no Docker — which is how it's meant to run on a small always-on host
-> like a Raspberry Pi. See [DEPLOY.md](DEPLOY.md). The standalone Next.js app in
-> `frontend/` (richer client-side UX) remains for local dev via the dev compose,
-> but is optional.
+> **One process, no Docker.** The FastAPI app serves its own server-rendered UI
+> (Jinja2 + HTMX) at `/`, with the JSON API under `/api`, and runs the nightly
+> scan in-process — a **single uvicorn process + one SQLite file**. No Node, no
+> build step, no containers. It's designed to run on a small always-on host like
+> a Raspberry Pi; see [DEPLOY.md](DEPLOY.md).
 
 ## Outcome tracking & thesis corroboration
 
@@ -67,44 +65,31 @@ cached per event in `outcome_snapshots` (12h TTL).
 ## Quick start
 
 ```bash
-cp .env.example .env
-# edit .env: set OPENAI_API_KEY, SEC_EDGAR_USER_AGENT (with your real email),
-# and POLYGON_API_KEY (Massive / Polygon.io) for fundamentals snapshots.
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ./backend
 
-docker compose up --build
+cp .env.example backend/.env
+# edit backend/.env: set OPENAI_API_KEY, SEC_EDGAR_USER_AGENT (with your real
+# email), and POLYGON_API_KEY (Massive / Polygon.io) for fundamentals snapshots.
+
+cd backend
+uvicorn app.main:app --reload
 ```
 
-- Backend: http://localhost:8000  (`/docs` for OpenAPI)
-- Frontend: http://localhost:3000
-- Postgres: localhost:5433 (user `greenblatt`, db `greenblatt`)
+Open http://localhost:8000 — UI at `/`, JSON API under `/api` (`/docs` for
+OpenAPI). The SQLite schema is created automatically on first start (default
+file: `backend/data/greenblatt.db`; override with `DATABASE_URL`).
 
-### Live reload during development
-
-The compose file deliberately does **not** bind-mount source code into the
-containers. On Docker Desktop for Mac (Apple Silicon, VirtioFS) host bind
-mounts deadlock on high-fan-out reads — Python's `importlib` walking the
-package tree and `npm` reading `package.json` both surface as
-`OSError: [Errno 35] Resource deadlock avoided`. Running off the image's
-copy avoids the issue entirely.
-
-For hot-reload, run `docker compose watch` in a second terminal (or
-`docker compose up --watch` on Compose 2.22+):
+Trigger a first scan from http://localhost:8000/scan, or:
 
 ```bash
-docker compose watch
+curl -XPOST 'http://localhost:8000/api/scan?lookback_days=60'
 ```
 
-This rsyncs source changes into the running containers; `uvicorn --reload`
-and `next dev` pick them up. Changes to `pyproject.toml` or `package.json`
-trigger an image rebuild automatically.
-
-Trigger a first scan from http://localhost:3000/scan, or:
-
-```bash
-curl -XPOST 'http://localhost:8000/scan?lookback_days=60'
-```
-
-The scheduler then re-runs nightly at 21:15 UTC (~5:15pm ET).
+The scheduler then re-runs nightly at 21:15 UTC (~5:15pm ET). For the always-on
+Raspberry Pi setup (systemd service, absolute SQLite path, daily cron scan),
+see [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -149,20 +134,8 @@ backend/                  FastAPI + SQLAlchemy + APScheduler
       static/             CSS + vendored htmx
     scheduler/jobs.py     APScheduler daily job
 
-frontend/                 Next.js 14 (app router) + Tailwind
-  app/
-    page.tsx              Dashboard (ranked event list)
-    events/[id]/page.tsx  Event detail + Outcome panel + Chat panel
-    track-record/page.tsx Calibration: score vs. realized alpha across events
-    scan/page.tsx         Manual scan trigger
-  components/
-    EventTable.tsx        Ranked rows
-    PerformancePanel.tsx  Outcome-vs-thesis: headline alpha, chart, washout, verdict
-    PerfChart.tsx         Rebased growth-of-100 multi-line SVG chart
-    AxisCard.tsx          Per-axis score with citations
-    Chat.tsx              Per-filing Q&A
-    ScoreBar.tsx          Score widgets
-  lib/api.ts              Typed client
+scripts/
+  scan-daily.sh           Cron-friendly scan trigger + poll (see DEPLOY.md)
 ```
 
 ## The Greenblatt scoring axes

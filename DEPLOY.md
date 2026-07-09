@@ -1,6 +1,6 @@
 # Deploying to a Raspberry Pi (native, no Docker)
 
-The app is now a **single FastAPI process**: it serves the JSON API, the
+The app is a **single FastAPI process**: it serves the JSON API, the
 server-rendered UI (Jinja2 + HTMX), and runs the nightly scan in-process, backed
 by one SQLite file. No Docker, no Node, no build step — ideal for an always-on
 Raspberry Pi 3B (1 GB).
@@ -33,7 +33,6 @@ sudo systemctl restart zramswap
 cd ~
 git clone https://github.com/djlisbonne/special-situations.git
 cd special-situations
-git checkout outcome-tracking-and-parsing-fix
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -133,17 +132,7 @@ curl -XPOST 'http://localhost:8000/api/scan?lookback_days=60'
   `/api/performance/track-record`).
 - **Remote access later:** add [Tailscale](https://tailscale.com) to reach it
   off your home network without exposing ports.
-
----
-
-## Docker alternative
-
-If you'd rather containerize, `docker-compose.prod.yml` now runs the same single
-service (SQLite, restart policy, memory cap):
-
-```bash
-cp .env.example .env        # set keys; DATABASE_URL is overridden to SQLite
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-Same single port (8000), same UI + API.
+- **Daily scan via cron (optional):** `scripts/scan-daily.sh` triggers a scan,
+  waits for it, and logs the result — install notes are at the bottom of the
+  script. If you use it, the app's built-in UTC nightly scan is redundant but
+  harmless.

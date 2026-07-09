@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     # routing itself (api.massive.com with api.polygon.io still supported).
     polygon_api_key: str = ""
 
-    database_url: str = "postgresql+psycopg://greenblatt:greenblatt@db:5432/greenblatt"
+    # Relative to the working directory (backend/ when run per the docs).
+    # On the Pi, override with an absolute path — see DEPLOY.md.
+    database_url: str = "sqlite:///./data/greenblatt.db"
 
     scan_lookback_days: int = 30
     scan_cron_hour: int = 21

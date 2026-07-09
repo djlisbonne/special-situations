@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -7,10 +8,9 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Dialect-aware engine. Postgres is the default for dev/server deployments;
-# SQLite is the low-footprint option for tiny hosts (e.g. a 1 GB Raspberry Pi),
-# where dropping a separate Postgres process matters. The app uses no
-# Postgres-specific column types, so JSON/Enum/DateTime all map cleanly.
+# SQLite is the default (single file, no server process — sized for an
+# always-on 1 GB Raspberry Pi). Any SQLAlchemy URL still works via
+# DATABASE_URL; the app uses no dialect-specific column types.
 _url = settings.database_url
 _is_sqlite = _url.startswith("sqlite")
 
@@ -19,6 +19,12 @@ if _is_sqlite:
     # FastAPI runs sync endpoints across a thread pool; SQLite's default
     # same-thread guard would reject those connections.
     _connect_args["check_same_thread"] = False
+    # Create the parent directory so the default ./data/... path works on a
+    # fresh checkout without a manual mkdir.
+    if _url.startswith("sqlite:///"):
+        _db_path = _url.removeprefix("sqlite:///")
+        if _db_path and _db_path != ":memory:":
+            Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     _url, pool_pre_ping=True, future=True, connect_args=_connect_args

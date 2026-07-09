@@ -7,9 +7,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.venv/
+*.egg-info/
 
-node_modules/
-.next/
-out/
+# SQLite database (and WAL sidecar files)
+data/
+*.db
+*.db-*
 
 .DS_Store
